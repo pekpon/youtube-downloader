@@ -3,7 +3,13 @@ import yt_dlp
 import os
 import tempfile
 import uuid
+import logging
+import sys
 from werkzeug.utils import secure_filename
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -20,58 +26,22 @@ def download_video():
         if not url:
             return jsonify({'error': 'URL es requerida'}), 400
         
+        logger.info(f"Attempting to download: {url}")
+        logger.info(f"yt-dlp version: {yt_dlp.__version__}")
+        
         # Create temporary directory
         temp_dir = tempfile.mkdtemp()
         
-        # Configure yt-dlp options with multiple bypass strategies
+        # Ultra-simple configuration that works locally
         ydl_opts = {
             'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
-            'format': '(best[height<=720]/best[height<=480]/worst)[ext=mp4]/(best[height<=720]/best[height<=480]/worst)',
+            'format': 'worst[ext=mp4]/worst',  # Use lowest quality to avoid issues
             'noplaylist': True,
-            'extractaudio': False,
-            'embedsubs': False,
-            'writesubtitles': False,
-            'writeautomaticsub': False,
-            # Multiple anti-bot strategies
-            'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
-            'referer': 'https://m.youtube.com/',
-            'age_limit': 99,
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android_creator', 'android', 'ios', 'web'],
-                    'player_skip': ['webpage', 'configs'],
-                    'skip': ['hls', 'dash'],
-                }
-            },
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
-                'Accept': '*/*',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Connection': 'keep-alive',
-                'Sec-Fetch-Dest': 'empty',
-                'Sec-Fetch-Mode': 'cors',
-                'Sec-Fetch-Site': 'same-origin',
-                'X-YouTube-Client-Name': '2',
-                'X-YouTube-Client-Version': '2.20210721.00.00',
-            },
-            'fragment_retries': 10,
-            'retries': 10,
+            'quiet': True,
+            'no_warnings': True,
         }
         
-        # Simplified single strategy approach for Railway
-        strategy_opts = {
-            **ydl_opts,
-            'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android'],
-                    'player_skip': ['webpage'],
-                }
-            }
-        }
-        
-        with yt_dlp.YoutubeDL(strategy_opts) as ydl:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             # Get video info first
             info = ydl.extract_info(url, download=False)
             title = info.get('title', 'video')
