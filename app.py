@@ -27,7 +27,10 @@ def download_video():
             return jsonify({'error': 'URL es requerida'}), 400
         
         logger.info(f"Attempting to download: {url}")
-        logger.info(f"yt-dlp version: {yt_dlp.__version__}")
+        try:
+            logger.info(f"yt-dlp version: {yt_dlp.version.__version__}")
+        except:
+            logger.info("yt-dlp version: unknown")
         
         # Create temporary directory
         temp_dir = tempfile.mkdtemp()
