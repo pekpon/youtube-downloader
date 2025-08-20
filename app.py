@@ -35,29 +35,91 @@ def download_video():
         # Create temporary directory
         temp_dir = tempfile.mkdtemp()
         
-        # Ultra-simple configuration that works locally
-        ydl_opts = {
-            'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
-            'format': 'worst[ext=mp4]/worst',  # Use lowest quality to avoid issues
-            'noplaylist': True,
-            'quiet': True,
-            'no_warnings': True,
-        }
+        # Advanced cookie-free bypass strategies based on yt-dlp wiki
+        strategies = [
+            # Strategy 1: Skip webpage and configs (visitor data approach)
+            {
+                'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
+                'format': 'worst[ext=mp4]/worst',
+                'noplaylist': True,
+                'quiet': True,
+                'extractor_args': {
+                    'youtube': {
+                        'player_skip': ['webpage', 'configs'],
+                        'player_client': ['android_testsuite'],
+                    }
+                }
+            },
+            # Strategy 2: TV client (often bypasses restrictions)
+            {
+                'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
+                'format': 'worst[ext=mp4]/worst',
+                'noplaylist': True,
+                'quiet': True,
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['tv_embedded'],
+                        'player_skip': ['webpage'],
+                    }
+                }
+            },
+            # Strategy 3: Web embedded client
+            {
+                'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
+                'format': 'worst[ext=mp4]/worst',
+                'noplaylist': True,
+                'quiet': True,
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['web_embedded'],
+                        'player_skip': ['webpage'],
+                    }
+                }
+            },
+            # Strategy 4: Android creator client
+            {
+                'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
+                'format': 'worst[ext=mp4]/worst',
+                'noplaylist': True,
+                'quiet': True,
+                'user_agent': 'com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip',
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android_creator'],
+                        'player_skip': ['webpage'],
+                    }
+                }
+            }
+        ]
         
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Get video info first
-            info = ydl.extract_info(url, download=False)
-            title = info.get('title', 'video')
-            
-            # Download the video
-            ydl.download([url])
-            
-            # Find the downloaded file
-            files = os.listdir(temp_dir)
-            if not files:
-                return jsonify({'error': 'Error al descargar el video'}), 500
-            
-            video_file = os.path.join(temp_dir, files[0])
+        video_file = None
+        title = 'video'
+        
+        for i, ydl_opts in enumerate(strategies):
+            try:
+                logger.info(f"Trying strategy {i+1}/{len(strategies)}")
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    # Get video info first
+                    info = ydl.extract_info(url, download=False)
+                    title = info.get('title', 'video')
+                    
+                    # Download the video
+                    ydl.download([url])
+                    
+                    # Find the downloaded file
+                    files = os.listdir(temp_dir)
+                    if files:
+                        video_file = os.path.join(temp_dir, files[0])
+                        logger.info(f"Success with strategy {i+1}")
+                        break
+            except Exception as e:
+                logger.error(f"Strategy {i+1} failed: {str(e)}")
+                if i == len(strategies) - 1:  # Last strategy
+                    raise e
+                continue
+        
+        if not video_file:
+            return jsonify({'error': 'No se pudo descargar con ninguna estrategia'}), 500
             
             # Send file and clean up
             def remove_file(response):
