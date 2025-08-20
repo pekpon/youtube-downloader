@@ -23,49 +23,103 @@ def download_video():
         # Create temporary directory
         temp_dir = tempfile.mkdtemp()
         
-        # Configure yt-dlp options with anti-bot measures
+        # Configure yt-dlp options with multiple bypass strategies
         ydl_opts = {
             'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
-            'format': 'best[height<=720]/best',  # Download best quality up to 720p
+            'format': '(best[height<=720]/best[height<=480]/worst)[ext=mp4]/(best[height<=720]/best[height<=480]/worst)',
             'noplaylist': True,
             'extractaudio': False,
             'embedsubs': False,
             'writesubtitles': False,
             'writeautomaticsub': False,
-            # Anti-bot measures
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'referer': 'https://www.youtube.com/',
+            # Multiple anti-bot strategies
+            'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
+            'referer': 'https://m.youtube.com/',
+            'age_limit': 99,
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android', 'web'],
-                    'player_skip': ['webpage'],
+                    'player_client': ['android_creator', 'android', 'ios', 'web'],
+                    'player_skip': ['webpage', 'configs'],
+                    'skip': ['hls', 'dash'],
                 }
             },
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-us,en;q=0.5',
-                'Accept-Encoding': 'gzip,deflate',
-                'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
                 'Connection': 'keep-alive',
-                'DNT': '1',
+                'Sec-Fetch-Dest': 'empty',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Site': 'same-origin',
+                'X-YouTube-Client-Name': '2',
+                'X-YouTube-Client-Version': '2.20210721.00.00',
             },
+            'fragment_retries': 10,
+            'retries': 10,
         }
         
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Get video info first
-            info = ydl.extract_info(url, download=False)
-            title = info.get('title', 'video')
-            
-            # Download the video
-            ydl.download([url])
-            
-            # Find the downloaded file
-            files = os.listdir(temp_dir)
-            if not files:
-                return jsonify({'error': 'Error al descargar el video'}), 500
-            
-            video_file = os.path.join(temp_dir, files[0])
+        # Try multiple strategies if first fails
+        strategies = [
+            # Strategy 1: Mobile Android client
+            {
+                **ydl_opts,
+                'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android_creator', 'android'],
+                        'player_skip': ['webpage'],
+                    }
+                }
+            },
+            # Strategy 2: iOS client
+            {
+                **ydl_opts,
+                'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['ios'],
+                        'player_skip': ['webpage'],
+                    }
+                }
+            },
+            # Strategy 3: Web client fallback
+            {
+                **ydl_opts,
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['web'],
+                    }
+                }
+            }
+        ]
+        
+        video_file = None
+        title = 'video'
+        
+        for i, opts in enumerate(strategies):
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    # Get video info first
+                    info = ydl.extract_info(url, download=False)
+                    title = info.get('title', 'video')
+                    
+                    # Download the video
+                    ydl.download([url])
+                    
+                    # Find the downloaded file
+                    files = os.listdir(temp_dir)
+                    if files:
+                        video_file = os.path.join(temp_dir, files[0])
+                        break
+            except Exception as e:
+                if i == len(strategies) - 1:  # Last strategy failed
+                    raise e
+                continue
+        
+        if not video_file:
+            return jsonify({'error': 'No se pudo descargar el video con ninguna estrategia'}), 500
             
             # Send file and clean up
             def remove_file(response):
